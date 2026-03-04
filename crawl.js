@@ -1,26 +1,52 @@
 const { JSDOM } = require('jsdom')
 
-async function crawlPage(currentURL){ // Async will return a promise
-    console.log(`Actively crawling: ${currentURL}`)
+async function crawlPage(baseURL, currentURL, pages){ // Async will return a promise
     
+    const currentURLObj = new URL(currentURL) 
+    const baseURLObj = new URL(baseURL)
+    
+    if(currentURLObj.hostname !== baseURLObj.hostname){ // Verifying if it's still on the same domain
+        return pages
+    }
+    
+    const normalizedCurrentURL = normalizeURL(currentURL)
+    
+    if(pages[normalizedCurrentURL] > 0){ // Counting the link occurance number on the domain and seeing if we are processing a link that we've already processed
+        pages[normalizedCurrentURL]++
+        return pages
+    }
+    
+    pages[normalizedCurrentURL] = 1
+
+    console.log(`Actively crawling: ${currentURL}`)
+
+    let htmlBody = ''
     try{
         const resp = await fetch(currentURL) // We don't need to specify options as it by default uses GET
 
         if (resp.status > 399){ // 400 or 500 errors
             console.log(`Error in fetch with status code: ${resp.status}, on page: ${currentURL}`)
-            return
+            return pages
         }
 
         const contentType = resp.headers.get("content-type")
         if (!contentType.includes("text/html")){
             console.log(`Non html response, content type: ${contentType}, on page: ${currentURL}`)
-            return
+            return pages
         }
 
-        console.log(await resp.text()) // Instead of receiving it formated as a .JSON, we want it formated in .HTML
+        htmlBody = await resp.text() // Instead of receiving it formated as a .JSON, we want it formated in .HTML
+
     } catch (err){
         console.log(`Error in fetch: ${err.message}, on page: ${currentURL}`)
     }
+
+    const nextURLs = getURLsFromHTML(htmlBody, baseURL)
+    for (const nextURL of nextURLs){
+        pages = await crawlPage(baseURL, nextURL, pages)
+    }
+
+    return pages
 }
 
 function getURLsFromHTML(htmlBody, baseURL){ // The utility for that is to grab all the clickable links inside a HTML web page.
